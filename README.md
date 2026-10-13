@@ -6,6 +6,7 @@ Short tutorials and reference notes for using LAMMPS on EuroHPC systems.
 
 - [Episode 1: Installing LAMMPS on EuroHPC](content/short-tutorials/s01e01.md)
 - [Episode 2: LAMMPS with MACE on Leonardo Booster](content/short-tutorials/s01e02.md)
+- [Episode 3: LAMMPS with EESSI on EuroHPC](content/short-tutorials/s01e03.md)
 - [Reference: CUDA driver, toolkit, and compute capability mapping](content/reference/cuda_driver_cuda_cc_mapping.md)
 
 The tutorials previously lived in `short-tutorials/`; the CUDA note previously

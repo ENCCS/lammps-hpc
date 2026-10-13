@@ -13,7 +13,8 @@ simulations on EuroHPC systems, with reference notes for GPU software compatibil
 
 ## Short tutorials
 
-Start with installation and compilation, then continue to the MACE workflow.
+Start with installation and compilation, then continue to the MACE workflow
+or inspect the prebuilt LAMMPS installations available through EESSI.
 The examples use specific software versions and cluster environments; adapt
 module names, paths, and allocation accounts to your system.
 
@@ -23,6 +24,7 @@ module names, paths, and allocation accounts to your system.
 
 short-tutorials/s01e01
 short-tutorials/s01e02
+short-tutorials/s01e03
 ```
 
 ## Reference notes
@@ -44,6 +46,7 @@ After working through these tutorials, you should be able to:
 - Inspect the packages available in an installed LAMMPS executable.
 - Configure and compile LAMMPS for CPU or GPU execution.
 - Prepare the LAMMPS and MACE software environment on Leonardo Booster.
+- Inspect EESSI LAMMPS modules and access them through a container on Leonardo.
 - Submit the example simulations using Slurm.
 - Consult the CUDA reference when checking GPU software compatibility.
 
