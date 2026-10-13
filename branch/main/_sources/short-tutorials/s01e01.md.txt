@@ -1,0 +1,416 @@
+# Episode 1: Installing LAMMPS on EuroHPC
+
+Start by checking the LAMMPS installation on your HPC system. If it lacks the
+packages you need, compile your own CPU or GPU version. The build examples cover
+LUMI and Leonardo; the Slurm examples below cover LUMI.
+
+## Before you start
+
+:::{prereq}
+- An account on the target HPC system and an allocation for submitting jobs.
+- Basic familiarity with shell commands, environment modules, and Slurm.
+- Access to the compilers and libraries required by your chosen build.
+:::
+
+## 1. Choose an installation
+
+LAMMPS is the Large-scale Atomic/Molecular Massively Parallel Simulator. Its
+release types serve different needs:
+
+| Release type | Purpose |
+| --- | --- |
+| Feature release | New features, fixes, and changes to the code. |
+| Stable release | A version prepared for longer-term use. |
+| Stable-release update | Bug fixes for an existing stable release. |
+
+Check the [LAMMPS release page](https://github.com/lammps/lammps/releases)
+when selecting a version. This tutorial uses **22 July 2025, update 3** as a
+specific example; it does not automatically select the newest release.
+
+### Use a prebuilt executable
+
+Check your HPC centre's documentation before compiling. The available version,
+module name, executable name, and enabled packages depend on the installation.
+
+| System | Documentation |
+| --- | --- |
+| LUMI | [LAMMPS modules](https://lumi-supercomputer.github.io/LUMI-EasyBuild-docs/l/LAMMPS/) |
+| Discoverer | [LAMMPS guide](https://docs.discoverer.bg/lammps.html) |
+| Vega | [LAMMPS guide](https://doc.vega.izum.si/lammps/) |
+| MareNostrum5 | [Available LAMMPS software](https://www.bsc.es/marenostrum/marenostrum/available-software/lammps) |
+| Leonardo | [LAMMPS software page](https://www.hpc.cineca.it/systems/software/scientific-field/physics/lammps/) |
+| MeluXina | [NGC container modules](https://docs.lxp.lu/containerization/ngc_container_modules/) |
+| Karolina | [Software modules](https://docs.it4i.cz/en/docs/software/modules/modules-karolina) |
+
+The [CSC LAMMPS guide](https://docs.csc.fi/apps/lammps/) is another useful
+reference; follow LUMI's own module documentation when working on LUMI.
+
+Load the module specified by your centre. A typical example is:
+
+```bash
+module load lammps
+which lmp
+```
+
+`which lmp` should print the path to the executable. If it does not, check the
+module instructions and the executable name used by your installation.
+
+### Check enabled packages
+
+LAMMPS uses a [package system](https://docs.lammps.org/Packages.html) for
+features such as force fields and hardware acceleration. Check whether the
+installed executable includes the packages your simulation needs:
+
+```bash
+lmp -help | sed -n '/Installed packages:/,/List of individual/p'
+```
+
+Example output:
+
+```text
+Installed packages:
+
+GRAPHICS KOKKOS KSPACE MANYBODY MOLECULE RIGID
+
+List of individual style options included in this LAMMPS executable
+```
+
+Your package list may differ. If a required package is missing, contact the
+centre's support team or follow the compilation steps below. If the installed
+executable already meets your needs, you can skip those steps.
+
+## 2. Prepare a source build
+
+Use a separate working directory for this example. Run the following commands
+in one shell session so that `LAMMPS_WORKDIR` remains available:
+
+```bash
+mkdir -p lammps-eurohpc
+cd lammps-eurohpc
+export LAMMPS_WORKDIR="$PWD"
+```
+
+### Check CMake
+
+Load an appropriate CMake module if needed, then check the executable and version:
+
+```bash
+which cmake && cmake --version
+```
+
+The [current LAMMPS CMake guide](https://docs.lammps.org/Build_cmake.html)
+requires CMake 3.20 or later. Check the requirements of the source version you
+choose; the module examples in this tutorial use a newer CMake version.
+
+### Download and unpack the source
+
+Run from `LAMMPS_WORKDIR`:
+
+```bash
+wget https://github.com/lammps/lammps/releases/download/stable_22Jul2025_update3/lammps-src-22Jul2025_update3.tar.gz
+
+tar xf lammps-src-22Jul2025_update3.tar.gz
+```
+
+The extracted source directory contains the following files and subdirectories:
+
+```text
+lammps-22Jul2025/
+├── bench/
+├── cmake/
+├── doc/
+├── examples/
+├── fortran/
+├── lib/
+├── LICENSE
+├── potentials/
+├── python/
+├── README
+├── src/
+├── third_party/
+├── tools/
+└── unittest/
+```
+
+### Create directories and select packages
+
+Run from `LAMMPS_WORKDIR`:
+
+```bash
+mkdir -p build lammps/22Jul2025/update3
+```
+
+The source, build, and installation directories are separate:
+
+```text
+lammps-eurohpc/
+├── lammps-22Jul2025/          # source
+├── build/                    # CMake build and package preset
+└── lammps/22Jul2025/update3/  # installation prefix
+```
+
+LAMMPS provides package presets under `lammps-22Jul2025/cmake/presets/`, including
+`all_off.cmake`, `all_on.cmake`, `basic.cmake`, and `most.cmake`.
+This example starts with `most.cmake`:
+
+```bash
+cp lammps-22Jul2025/cmake/presets/most.cmake build/pkgs.cmake
+```
+
+Edit `build/pkgs.cmake` to enable only the packages you need. Some packages have
+additional library requirements; selecting a smaller set can simplify the build.
+
+## 3. Configure and compile LAMMPS
+
+**Choose one build recipe** for your target system. Each recipe starts in
+`LAMMPS_WORKDIR/build` and installs to the same example prefix. Use separate
+build directories and installation prefixes if you want to keep multiple builds.
+
+The GPU recipes enable KOKKOS. All recipes build a shared library, which is
+useful when linking LAMMPS to other software. Adapt the module names to those
+available on your system.
+
+### LUMI-C: CPU build
+
+```bash
+module purge
+module load LUMI
+module load partition/C
+module load PrgEnv-cray
+module load cray-fftw
+module load cray-python
+
+cd "$LAMMPS_WORKDIR/build"
+
+prefix="$LAMMPS_WORKDIR/lammps/22Jul2025/update3"
+cmake ../lammps-22Jul2025/cmake \
+    -C ./pkgs.cmake \
+    -DCMAKE_INSTALL_PREFIX="$prefix" \
+    -DBUILD_SHARED_LIBS=yes \
+    -DBUILD_MPI=yes \
+    -DBUILD_OMP=yes \
+    -DPKG_PYTHON=ON
+
+make VERBOSE=1 -j 16 install
+```
+
+### LUMI-G: AMD GPU build
+
+```bash
+module purge
+module load LUMI
+module load partition/G
+module load PrgEnv-amd
+module load cray-fftw
+module load rocm
+module load cray-python
+
+export HIPCC_COMPILE_FLAGS_APPEND="--offload-arch=gfx90a $(CC --cray-print-opts=cflags)"
+export HIPCC_LINK_FLAGS_APPEND=$(CC --cray-print-opts=libs)
+
+cd "$LAMMPS_WORKDIR/build"
+
+prefix="$LAMMPS_WORKDIR/lammps/22Jul2025/update3"
+cmake ../lammps-22Jul2025/cmake \
+    -C ./pkgs.cmake \
+    -DCMAKE_INSTALL_PREFIX="$prefix" \
+    -DBUILD_SHARED_LIBS=yes \
+    -DBUILD_MPI=yes \
+    -DBUILD_OMP=yes \
+    -DMPI_CXX_COMPILER=$(which hipcc) \
+    -DCMAKE_CXX_COMPILER=$(which hipcc) \
+    -DCMAKE_C_COMPILER=$(which hipcc) \
+    -DCMAKE_Fortran_COMPILER=$(which gfortran) \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPKG_PYTHON=ON \
+    -DAMDGPU_TARGETS=gfx90a \
+    -DPKG_KOKKOS=ON \
+    -DKokkos_ENABLE_SERIAL=ON \
+    -DKokkos_ENABLE_OPENMP=ON \
+    -DKokkos_ENABLE_HIP=ON \
+    -DKokkos_ENABLE_HIP_MULTIPLE_KERNEL_INSTANTIATIONS=ON \
+    -DKokkos_ARCH_AMD_GFX90A=ON \
+    -DKokkos_ARCH_ZEN3=ON \
+    -DKokkos_ENABLE_DEPRECATION_WARNINGS=OFF \
+    -DFFT=FFTW3 \
+    -DFFT_KOKKOS=hipFFT
+
+make VERBOSE=1 -j 16 install
+```
+
+### Leonardo GPP: CPU build
+
+```bash
+module purge
+module load intel-oneapi-compilers/2024.1.0
+module load intel-oneapi-mpi/2021.12.1
+module load intel-oneapi-mkl/2024.0.0--intel-oneapi-mpi--2021.12.1
+
+cd "$LAMMPS_WORKDIR/build"
+prefix="$LAMMPS_WORKDIR/lammps/22Jul2025/update3"
+cmake ../lammps-22Jul2025/cmake \
+    -C ./pkgs.cmake \
+    -DCMAKE_INSTALL_PREFIX="$prefix" \
+    -DBUILD_SHARED_LIBS=yes \
+    -DBUILD_MPI=yes \
+    -DBUILD_OMP=yes \
+    -DMPI_CXX_COMPILER=mpiicpx \
+    -DCMAKE_CXX_COMPILER=icpx \
+    -DCMAKE_C_COMPILER=icx \
+    -DCMAKE_Fortran_COMPILER=ifx \
+    -DCMAKE_CXX_FLAGS="-march=sapphirerapids" \
+    -DCMAKE_C_FLAGS="-march=sapphirerapids" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DFFT=MKL
+
+make VERBOSE=1 -j 32 install
+```
+
+### Leonardo Booster: NVIDIA GPU build
+
+```bash
+module purge
+module load gcc/12.2.0
+module load cuda/12.2
+module load openmpi/4.1.6--gcc--12.2.0-cuda-12.2
+module load fftw/3.3.10--openmpi--4.1.6--gcc--12.2.0-spack0.22
+
+libcudapath=$(dirname $(find $CUDA_HOME -name "libcuda.so.1") )
+export LD_LIBRARY_PATH=$libcudapath:$LD_LIBRARY_PATH
+
+cd "$LAMMPS_WORKDIR/build"
+prefix="$LAMMPS_WORKDIR/lammps/22Jul2025/update3"
+cmake ../lammps-22Jul2025/cmake \
+    -C ./pkgs.cmake \
+    -DCMAKE_INSTALL_PREFIX="$prefix" \
+    -DBUILD_SHARED_LIBS=yes \
+    -DBUILD_MPI=yes \
+    -DBUILD_OMP=yes \
+    -DMPI_CXX_COMPILER=mpiCC \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_Fortran_COMPILER=gfortran \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPKG_KOKKOS=ON \
+    -DKokkos_ENABLE_SERIAL=ON \
+    -DKokkos_ENABLE_OPENMP=ON \
+    -DKokkos_ENABLE_CUDA=ON \
+    -DKokkos_ARCH_AMPERE80=ON \
+    -DKokkos_ARCH_ICX=ON \
+    -DKokkos_ENABLE_DEPRECATION_WARNINGS=OFF \
+    -DFFT=FFTW3 \
+    -DFFT_KOKKOS=CUFFT
+
+make VERBOSE=1 -j 32 install
+```
+
+### Check the installed executable
+
+After the build completes, check that the executable can start in the loaded
+module environment:
+
+```bash
+"$LAMMPS_WORKDIR/lammps/22Jul2025/update3/bin/lmp" -help
+cd "$LAMMPS_WORKDIR"
+```
+
+You should see LAMMPS help output and the enabled package list. If startup fails,
+check the build output, loaded modules, and shared-library search paths before
+submitting a job.
+
+## 4. Run a LUMI test with Slurm
+
+The following job scripts are for LUMI. If you compiled on Leonardo, use that
+system's Slurm documentation to prepare a matching job script; Episode 2
+includes a Leonardo Booster example for the MACE workflow.
+
+### Prepare the input
+
+From `LAMMPS_WORKDIR`, copy the Lennard-Jones benchmark into an example directory:
+
+```bash
+cd "$LAMMPS_WORKDIR"
+mkdir -p example
+cp lammps-22Jul2025/bench/in.lj example/
+cd example
+```
+
+Your working directory is now `LAMMPS_WORKDIR/example`. Save **one** of the
+following job scripts as `job.sh` in that directory. The relative installation
+path in each script assumes you submit the job from here.
+
+### LUMI-C: CPU job script
+
+```bash
+#!/bin/bash -l
+#SBATCH --partition=debug # choose another queue for production
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=128
+#SBATCH --time=00:05:00 # increase for production runs
+
+module purge
+module load LUMI
+module load partition/C
+module load PrgEnv-cray
+module load cray-fftw
+module load cray-python
+
+lmp_path=../lammps/22Jul2025/update3
+export LD_LIBRARY_PATH="$lmp_path/lib64:$lmp_path/lib:${LD_LIBRARY_PATH:-}"
+export OMP_NUM_THREADS=1
+
+srun "$lmp_path/bin/lmp" -in in.lj -v x 3 -v y 3 -v z 3
+```
+
+### LUMI-G: GPU job script
+
+```bash
+#!/bin/bash -l
+#SBATCH --partition=dev-g # choose another queue for production
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=8
+#SBATCH --gpus-per-node=8
+#SBATCH --time=00:05:00 # increase for production runs
+
+module purge
+module load LUMI
+module load partition/G
+module load PrgEnv-amd
+module load cray-fftw
+module load rocm
+module load cray-python
+
+lmp_path=../lammps/22Jul2025/update3
+export LD_LIBRARY_PATH="$lmp_path/lib64:$lmp_path/lib:${LD_LIBRARY_PATH:-}"
+
+export MPICH_GPU_SUPPORT_ENABLED=1
+export OMP_NUM_THREADS=1
+export OMP_PROC_BIND=spread
+export OMP_PLACES=threads
+
+srun "$lmp_path/bin/lmp" -in in.lj -k on g 8 -sf kk -pk kokkos -v x 8 -v y 8 -v z 8
+```
+
+### Submit and inspect the job
+
+Run from `LAMMPS_WORKDIR/example`. Replace `xxxxxx` with your allocation account:
+
+```bash
+sbatch -A xxxxxx job.sh
+```
+
+Slurm prints a job ID. When the job finishes, check its output and `log.lammps`
+for errors and the final simulation step.
+
+## Completion checklist
+
+- You can locate the LAMMPS executable and display its help output.
+- Its package list includes the features required by your simulation.
+- If you compiled LAMMPS, it is installed under the intended prefix.
+- Your test job starts the intended executable and finishes without errors.
+
+## Next steps
+
+Continue with {doc}`s01e02` to build LAMMPS with MACE on Leonardo Booster.
+For NVIDIA GPU compatibility details, see
+{doc}`../reference/cuda_driver_cuda_cc_mapping`.
